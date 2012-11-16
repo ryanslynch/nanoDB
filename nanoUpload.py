@@ -9,8 +9,8 @@ create an ephemeris (\"par\" file) and upload it, too (only available
 for PSRFITS GUPPI and PUPPI data).
 
 Author       : Ryan S. Lynch
-Contact      : rlynch@physics.mcgill.ca
-Last Updated : 8 Nov. 2012
+Contact      : ryan.lynch@nanograv.org
+Last Updated : 16 Nov. 2012
 """
 
 import pyfits as PF
@@ -19,6 +19,17 @@ import nanoCredentials, M2Crypto, sys, os
 from pyslalib.slalib import sla_djcl
 
 SECPERDAY = 86400.0
+
+usage="""Usage: nanoUpload.py infiles
+Arguments:
+  infiles        A list of fold-mode pulsar files taken with GUPPI,
+                 PUPPI, and/or ASP.  Typical wildcards are accepted.
+Options:
+  -h, --help     Print this help page
+
+Author: Ryan S. Lynch (ryan.lynch@nanograv.org)
+"""
+  
 
 # For security reasons, FTP credentials are stored in a separate file
 # and are assigned here.
@@ -249,26 +260,35 @@ def get_ftp_path(infilenm):
 
 
 if __name__ == "__main__":
-    infilenms = sys.argv[1:] # Get the list of in-file names
-    cftp = CornellFTP()
+    arguments = sys.argv[1:] # Get the list of in-file names
     
-    for infilenm in infilenms:
-        print "\nWorking on %s..."%infilenm
-        parfilenm, parfile_status = write_ephemeris(infilenm)
+    if len(arguments) == 0 or "-h" in arguments or "--help" in arguments:
+        print usage
+        sys.exit(0)
 
-        if debug:
-            ftp_path = os.path.join("NANOGrav", "Test", get_ftp_path(infilenm))
+    elif any([arg.startswith("-") for arg in arguments]):
+        print "ERROR: Unrecgonized option"
+        print usage
 
-        else:
-            ftp_path = os.path.join("NANOGrav", get_ftp_path(infilenm))
+    else:
+        cftp = CornellFTP()
+        
+        for infilenm in arguments:
+            print "\nWorking on %s..."%infilenm
+            parfilenm, parfile_status = write_ephemeris(infilenm)
             
-        mdr_status = cftp.mdr(ftp_path)
-
-        upload_status = cftp.upload(infilenm, ftp_path)
+            if debug:
+                ftp_path = os.path.join("NANOGrav", "Test",
+                                        get_ftp_path(infilenm))
+            
+            else:
+                ftp_path = os.path.join("NANOGrav", get_ftp_path(infilenm))
+            
+            mdr_status = cftp.mdr(ftp_path)
+            
+            upload_status = cftp.upload(infilenm, ftp_path)
         
-        if parfile_status == 0:
-            cftp.upload(parfilenm, ftp_path)
+            if parfile_status == 0:
+                cftp.upload(parfilenm, ftp_path)
 
-    cftp.close()
-
-        
+        cftp.close()
