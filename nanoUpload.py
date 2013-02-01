@@ -1,6 +1,6 @@
 #! /usr/bin/python
 
-debug = True
+debug = False
 
 """
 Upload fold-mode pulsar data taken with GUPPI, PUPPI, and/or ASP to
