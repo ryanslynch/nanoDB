@@ -1,6 +1,6 @@
 #! /usr/bin/python
 
-debug = False
+debug = True
 
 """
 Upload fold-mode pulsar data taken with GUPPI, PUPPI, and/or ASP to
@@ -121,6 +121,7 @@ def get_remote_paths(filenm):
         exit(1)
 
     cornell_path = os.path.join(source, backend, year, "rawdata")
+    if backend.lower() == "guppi": backend = backend + "2"
     ubc_path     = os.path.join(source.strip("B").strip("J"), backend.lower())
 
     return cornell_path, ubc_path
@@ -163,29 +164,34 @@ if __name__ == "__main__":
                 ubc_path     = os.path.join("/dstore", "data", ubc_path)
 
             try:
-                cftp.upload(infilenm, cornell_path)
-            except:
+              cftp.upload(infilenm, cornell_path)
+            except Exception as e:
                 print("ERROR: Failed to upload %s to Cornell FTP server" % \
                       infilenm)
-
-            try:
-                ubcsftp.upload(infilenm, ubc_path)
-            except:
-                print("ERROR: Failed to upload %s to UBC data archive" % \
-                      infilenm)
+                print(e)
 
             if ephemfile_status == 0:
                 try:
-                    cftp.upload(ephemfilenm, cornell_path)
-                except:
+                  cftp.upload(ephemfilenm, cornell_path)
+                except Exception as e:
                     print("ERROR: Failed to upload %s to Cornell FTP "\
                           "server"%ephemfilenm)
+                    print(e)
                 
+            try:
+              ubcsftp.upload(infilenm, ubc_path)
+            except Exception as e:
+                print("ERROR: Failed to upload %s to UBC data archive" % \
+                      infilenm)
+                print(e)
+
+            if ephemfile_status == 0:
                 try:
-                    ubcsftp.upload(ephemfilenm, ubc_path)
-                except:
+                  ubcsftp.upload(ephemfilenm, ubc_path)
+                except Exception:
                     print("ERROR: Failed to upload %s to UBC data "\
-                          "archive"%ephemfilenm)                    
+                          "archive"%ephemfilenm)
+                    print(e)
 
         cftp.close()
         ubcsftp.close()

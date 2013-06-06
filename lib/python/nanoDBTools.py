@@ -204,3 +204,64 @@ class UBCSFTP(object):
         
         self.sftp.close()
         self.client.close()
+
+
+class DataProduct(object):
+    def __init__(self, profile_name):
+        self.ProfileName = profile_name
+
+    def add_archive(nsubs, wsub, ndumps, tdump, fmt, src_raw_profilenm,
+                    src_profilenm, processing_type, processing_filenm):
+        self.type                 = "archive"
+        self.n_subbands           = nsubs
+        self.subbands_width       = wsub
+        self.n_dumps              = ndumps
+        self.dump_length          = tdump
+        self.format               = fmt
+        self.sourceRawProfileName = src_raw_profilenm
+        self.sourceProfileName    = src_profilenm
+        self.processingType       = processing_type
+        self.processingFileName   = processing_filenm
+    
+    
+    def add_toa(psrnm, tmpltnm, toa, toa_err, mjd, scope_code,
+                details_filenm, subidx, dumpidx, date_loaded,
+                date_calculated):
+        self.type                 = "TOA"
+        self.pulsarName           = psrnm
+        self.templateName         = tmpltnm
+        self.TOA                  = toa
+        self.TOAError             = toa_error
+        self.MJD                  = mjd
+        self.telescopeCode        = scope_code
+        self.detailsFileName      = details_filenm
+        self.subband_idx          = subidx
+        self.dump_idx             = dumpidx
+        self.date_loaded          = date_loaded
+        self.date_calculated      = date_calculated
+        
+
+def parse_metafile(infilenm):
+    infile  = open(infilenm, "r")
+    lines   = infile.readlines()
+    entries = []
+    entry   = {}
+    
+    for line in lines:
+        try:
+            key, value = [s.strip() for s in line.split(":")]
+            
+            if key == "ProfileName":
+                if len(entry.keys()) != 0: entries.append(entry.copy())
+                entry = {}
+        
+            entry[key] = value
+            
+        except:
+            pass
+        
+    for entry in entries:
+        if "TOA" in entry.keys(): entry["type"] = "TOA"
+        else: entry["type"] = "archive"
+        
+    return entries
