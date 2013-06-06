@@ -150,7 +150,8 @@ if __name__ == "__main__":
         ubcsftp = nanoDBTools.UBCSFTP()
         
         for infilenm in arguments:
-            ephemfile_status, ephemfilenm = write_ephemeris(infilenm)
+            #ephemfile_status, ephemfilenm = write_ephemeris(infilenm)
+            ephemfile_status = 1
             cornell_path, ubc_path  = get_remote_paths(infilenm)
 
             # Upload to a Test directory if in debugging mode
@@ -188,10 +189,14 @@ if __name__ == "__main__":
             if ephemfile_status == 0:
                 try:
                   ubcsftp.upload(ephemfilenm, ubc_path)
-                except Exception:
+                  os.remove(ephemfilenm)
+                except Exception as e:
                     print("ERROR: Failed to upload %s to UBC data "\
                           "archive"%ephemfilenm)
                     print(e)
+
+            if ephemfile_status == 0:
+              os.remove(ephemfilenm)
 
         cftp.close()
         ubcsftp.close()
