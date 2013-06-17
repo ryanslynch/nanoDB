@@ -1,6 +1,5 @@
 #! /usr/bin/python
-
-debug = True
+from __future__ import print_function
 
 """
 Upload fold-mode pulsar data taken with GUPPI, PUPPI, and/or ASP to
@@ -13,7 +12,6 @@ Author       : Ryan S. Lynch
 Contact      : ryan.lynch@nanograv.org
 Last Updated : 31 Jan. 2013
 """
-
 
 import pyfits as PF
 import sys, os, nanoDBTools
@@ -32,61 +30,81 @@ Author: Ryan S. Lynch (ryan.lynch@nanograv.org)
 """
 
 
-def write_ephemeris(filenm):
+
+def parse_arguments(args):
     """
-    Read ephemeris information from a PSRFITS archive and write a tempo-style
-    \"par\" file for it.  Parameters with zero or empty-string values are
-    not written.
+    Parse the command line arguments and print help and usage
+    information if necessary.
+
+    Parameters
+    ----------
+    args : list
+      The list of command line arguments.
+
+    Returns
+    -------
+    args : list
+      The list of command line arguments.  If the help flag or an
+      unrecognized option is encountered, this will be empty.
+    """
+    
+    if len(args) == 0 or "-h" in args or "--help" in args:
+        print(usage)
+        return []
+
+    elif any([arg.startswith("-") for arg in args]):
+        print("ERROR: Unrecognized option")
+        print(usage)
+        return []
+
+    else:
+        return args
+
+
+
+def determine_filetype(filenm):
+    """
+    Determine the type of the given file.
 
     Parameters
     ----------
     filenm : str
-        The name of the input archive.
+      The file name whose type to determine.
 
     Returns
-    -------
-    status : int
-        Zero indicates success.  One indicates failure.
-    outfilenm : str
-        The name of the output par file.
+    filetype : str
+      The file type.  May be \"META\", \"FITS\", or \"UNKNOWN\".
     """
 
-    # Open the file using pyfits and get the header
-    hdulist = PF.open(filenm)
-    hdr     = hdulist[0].header
+    # Try opening the file with pyfits. If that works, assume a fits
+    # file.
+    try:
+        f = PF.open(filenm)
 
-    if hdr["BACKEND"] == "GUPPI" or hdr["BACKEND"] == "PUPPI":
-        scidata   = hdulist[1].data # The first extension is the ephemeris
-        keys      = scidata.dtype.names # These are the parameter names
-        values    = scidata[0]
-        outfilenm = infilenm.replace(".fits", ".par")
-        outfile   = open(outfilenm, "w")
+    except IOError:
+        # If pyfits.open didn't work, look for a line starting with
+        # ProfileName and if found, assume a metadata file
+        f = open(filenm, "r")
 
-        for key,value in zip(keys, values):
-            # Only write non-zero and non-empty strings
-            if  value != 0 and value != "":
-                outfile.write("%-10s%18s\n"%(key,value))
-            else: pass
-            
-        outfile.close()
-        print("Ephemeris written to %s"%outfilenm)
-        status = 0
+        if any(["ProfileName" in line for line in f.readlines()]):
+            filetype = "META"
+
+        else:
+            filetype = "UNKNOWN"
 
     else:
-        # ASP files have no ephemeris table, so do nothing for them
-        outfilenm = None
-        print("WARNING: Ephemeris not written because BACKEND != G/PUPPI")
-        status   = 1
+        filetype = "FITS"
 
-    hdulist.close()
+    finally:
+      f.close()
 
-    return status, outfilenm
+      return filetype
 
 
 
-def get_remote_paths(filenm):
+def parse_archive(filenm):
     """
-    Parse an input fits file header and create an remote path.
+    Parse an input fits file header and create a remote path.
 
     Parameters
     ----------
@@ -104,99 +122,132 @@ def get_remote_paths(filenm):
     # Open the file using pyfits and get the header
     hdulist = PF.open(filenm)
     hdr     = hdulist[0].header
-    backend = hdr["BACKEND"]
+    hdulist.close()
     source  = hdr["SRC_NAME"]
+    backend = hdr["BACKEND"]
 
-    if backend == "GUPPI" or backend == "PUPPI":
+    if backend == "GUPPI":
+        backend = "GUPPI2" # This is for uniformity with existing archives
         year = hdr["DATE-OBS"].split("-")[0]
-        
+
+    elif backend == "PUPPI":
+        year = hdr["DATE-OBS"].split("-")[0]
+    
     elif backend == "xASP":
         backend = "ASP"
         MJD     = hdr["STT_IMJD"] + hdr["STT_SMJD"]/SECPERDAY
         year    = str(sla_djcl(MJD)[0]) # Convert MJD to calendar date
 
     else:
-        print("WARNING: Unrecognized backend for %s!"%infilenm)
-        print("         Only GUPPI, PUPPI and ASP are supported")
-        exit(1)
+        backend = None
+        year    = None
 
-    cornell_path = os.path.join(source, backend, year, "rawdata")
-    if backend.lower() == "guppi": backend = backend + "2"
-    ubc_path     = os.path.join(source.strip("B").strip("J"), backend.lower())
-
-    return cornell_path, ubc_path
+    return source,backend,year
 
 
 
 if __name__ == "__main__":
+    # Parse the command line arguments
+    args      = sys.argv[1:]
+    infilenms = parse_arguments(args)
+    if len(infilenms) == 0: sys.exit()
 
-    # Get the list of command line arguments
-    arguments = sys.argv[1:]
+    # uploads will hold a tuple of the file names to upload and 
+    # the upload paths for the remote sites
+    uploads = [] 
+    for infilenm in infilenms:
+        # Determine input file types
+        filetype = determine_filetype(infilenm)
 
-    # Check of the -h or --help flags and for any unrecognized options
-    if len(arguments) == 0 or "-h" in arguments or "--help" in arguments:
-        print(usage)
-        sys.exit(0)
+        if filetype == "META":
+            for entry in nanoDBTools.parse_metafile(infilenm):
+                if entry["type"] == "archive":
+                    source,backend,year = parse_archive(entry["ProfileName"])
+                    
+                    if backend is not None:
+                        cpath   = os.path.join("NANOGrav", source, backend,
+                                                year, "processed")
+                        ubcpath = os.path.join("/", "dstore", "data",
+                                               source.strip("B").strip("J"),
+                                               backend.lower())
+                        
+                        uploads.append((entry["ProfileName"], cpath,
+                                         ubcpath))
+                    else:
+                        print("WARNING: Skipping %s because it is is "\
+                              "not from a recognized "\
+                              "backend"%entry["ProfileName"])
 
-    elif any([arg.startswith("-") for arg in arguments]):
-        print("ERROR: Unrecognized option")
-        print(usage)
-        sys.exit(1)
+            # Include the metadata file itself
+            cpath   = "NANOGrav/loadingfiles"
+            ubcpath = "/dstore/data/loadingfiles"
+            uploads.append((infilenm, cpath, ubcpath))
+            
+        # Assume any fits files supplied via the command line are raw
+        # data
+        elif filetype == "FITS":
+            source,backend,year = parse_archive(infilenm)
 
-    # If the arguments look correct, proceed to upload
-    else:
-        # Connect to the remote sites
-        cftp    = nanoDBTools.CornellFTP()
-        ubcsftp = nanoDBTools.UBCSFTP()
-        
-        for infilenm in arguments:
-            #ephemfile_status, ephemfilenm = write_ephemeris(infilenm)
-            ephemfile_status = 1
-            cornell_path, ubc_path  = get_remote_paths(infilenm)
-
-            # Upload to a Test directory if in debugging mode
-            if debug:
-                cornell_path = os.path.join("NANOGrav", "Test", cornell_path)
-                ubc_path     = os.path.join("/dstore", "data", "Test",
-                                            ubc_path)
+            if backend is not None:
+                cpath   = os.path.join("NANOGrav", source, backend, year,
+                                       "rawdata")
+                ubcpath = os.path.join("/", "dstore", "data",
+                                       source.strip("B").strip("J"),
+                                       backend.lower())
+              
+                uploads.append((infilenm, cpath, ubcpath))
 
             else:
-                cornell_path = os.path.join("NANOGrav", cornell_path)
-                ubc_path     = os.path.join("/dstore", "data", ubc_path)
+                print("WARNING: Skipping %s because it is is not from a "\
+                      "recognized backend"%infilenm)
 
-            try:
-              cftp.upload(infilenm, cornell_path)
-            except Exception as e:
-                print("ERROR: Failed to upload %s to Cornell FTP server" % \
-                      infilenm)
-                print(e)
+        elif filetype == "UNKNOWN":
+            print("WARNING: Skipping %s because it is of unrecognized "\
+                  "file type"%infilenm)
 
-            if ephemfile_status == 0:
-                try:
-                  cftp.upload(ephemfilenm, cornell_path)
-                except Exception as e:
-                    print("ERROR: Failed to upload %s to Cornell FTP "\
-                          "server"%ephemfilenm)
-                    print(e)
-                
-            try:
-              ubcsftp.upload(infilenm, ubc_path)
-            except Exception as e:
-                print("ERROR: Failed to upload %s to UBC data archive" % \
-                      infilenm)
-                print(e)
+    
+    cftp    = nanoDBTools.CornellFTP()
+    ubcsftp = nanoDBTools.UBCSFTP()
+    # We first upload everything to Cornell.  This duplicates some of
+    # code but it prevents the connection from timing out due to
+    # innactivity while large files are being uploaded to UBC.
 
-            if ephemfile_status == 0:
-                try:
-                  ubcsftp.upload(ephemfilenm, ubc_path)
-                  os.remove(ephemfilenm)
-                except Exception as e:
-                    print("ERROR: Failed to upload %s to UBC data "\
-                          "archive"%ephemfilenm)
-                    print(e)
+    count = 0
+    for upload in uploads:
+        # Print a status message
+        count += 1
+        print("\rUploading %i of %i to Cornell FTP"%(count, len(uploads)),
+              end="")
+        sys.stdout.flush()
+        
+        try:
+            cftp.upload(upload[0], upload[1])
+            
+        except Exception as e:
+            print("\nWARNING: Failed to upload %s to Cornell FTP" % \
+                  upload[0])
+            print(e)
 
-            if ephemfile_status == 0:
-              os.remove(ephemfilenm)
+    # This just prints a new line
+    print("")
+    
+    # Now upload to UBC
+    count = 0
+    for upload in uploads:
+        count += 1
+        print("\rUploading %i of %i to UBC archive"%(count, len(uploads)),
+              end="")
+        sys.stdout.flush()
+        
+        try:
+          ubcsftp.upload(upload[0], upload[2])
+          
+        except Exception as e:
+            print("\nWARNING: Failed to upload %s to UBC archive" % \
+                  upload[0])
+            print(e)
 
-        cftp.close()
-        ubcsftp.close()
+    print("")
+
+    cftp.close()
+    ubcsftp.close()
