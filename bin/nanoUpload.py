@@ -126,8 +126,9 @@ def parse_archive(filenm):
     source  = hdr["SRC_NAME"]
     backend = hdr["BACKEND"]
 
-    if backend == "GUPPI":
-        backend = "GUPPI2" # This is for uniformity with existing archives
+    if backend == "GUPPI2":
+        # This is for uniformity between incoherent/coherent GUPPI modes
+        backend = "GUPPI" 
         year = hdr["DATE-OBS"].split("-")[0]
 
     elif backend == "PUPPI":
