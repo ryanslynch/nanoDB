@@ -123,7 +123,7 @@ def parse_archive(filenm):
     hdulist = PF.open(filenm)
     hdr     = hdulist[0].header
     hdulist.close()
-    source  = hdr["SRC_NAME"]
+    source  = hdr["SRC_NAME"].strip("B").strip("J")
     backend = hdr["BACKEND"]
 
     if backend == "GUPPI2":
@@ -168,8 +168,7 @@ if __name__ == "__main__":
                     if backend is not None:
                         cpath   = os.path.join("NANOGrav", source, backend,
                                                 year, "processed")
-                        ubcpath = os.path.join("/", "dstore", "data",
-                                               source.strip("B").strip("J"),
+                        ubcpath = os.path.join("/", "dstore", "data", source, 
                                                backend.lower())
                         
                         uploads.append((entry["ProfileName"], cpath,
@@ -192,8 +191,7 @@ if __name__ == "__main__":
             if backend is not None:
                 cpath   = os.path.join("NANOGrav", source, backend, year,
                                        "rawdata")
-                ubcpath = os.path.join("/", "dstore", "data",
-                                       source.strip("B").strip("J"),
+                ubcpath = os.path.join("/", "dstore", "data", source,
                                        backend.lower())
               
                 uploads.append((infilenm, cpath, ubcpath))
